@@ -254,7 +254,12 @@ $(function() {
         var select = $(evt.target);
 
         if(select.val() != 'caching'){
-            $('#v-clear-cache').hide();
+            const re = new RegExp('caching-');
+            if(re.test(select.val())){
+                $('#v-clear-cache').show();
+            }else{
+                $('#v-clear-cache').hide();
+            }
         } else {
             $('#v-clear-cache').show();
         }
@@ -271,26 +276,11 @@ $(function() {
 });
 
 function WEBrandom() {
-    var chars = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXTZabcdefghiklmnopqrstuvwxyz';
-    var string_length = 16;
-    var webrandom = '';
-    for (var i = 0; i < string_length; i++) {
-        var rnum = Math.floor(Math.random() * chars.length);
-        webrandom += chars.substr(rnum, 1);
-    }
-    document.v_edit_web.v_stats_password.value = webrandom;
+    document.v_edit_web.v_stats_password.value = randomString2(16);
 }
 
 function FTPrandom(elm) {
-    var chars = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXTZabcdefghiklmnopqrstuvwxyz';
-    var string_length = 16;
-    var ftprandomstring = '';
-    for (var i = 0; i < string_length; i++) {
-        var rnum = Math.floor(Math.random() * chars.length);
-        ftprandomstring += chars.substr(rnum, 1);
-    }
-
-    $(elm).parents('.ftptable').find('.v-ftp-user-psw').val(ftprandomstring);
+    $(elm).parents('.ftptable').find('.v-ftp-user-psw').val(randomString2(16));
     App.Actions.WEB.randomPasswordGenerated && App.Actions.WEB.randomPasswordGenerated(elm);
 }
 

@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Hestia Control Panel upgrade script for target version 1.5.3
+# Hestia Control Panel upgrade script for target version 1.5.4
 
 #######################################################################################
 #######                      Place additional commands below.                   #######
@@ -18,5 +18,5 @@
 upgrade_config_set_value 'UPGRADE_UPDATE_WEB_TEMPLATES' 'false'
 upgrade_config_set_value 'UPGRADE_UPDATE_DNS_TEMPLATES' 'false'
 upgrade_config_set_value 'UPGRADE_UPDATE_MAIL_TEMPLATES' 'false'
-upgrade_config_set_value 'UPGRADE_REBUILD_USERS' 'false'
+upgrade_config_set_value 'UPGRADE_REBUILD_USERS' 'true'
 upgrade_config_set_value 'UPGRADE_UPDATE_FILEMANAGER_CONFIG' 'false'

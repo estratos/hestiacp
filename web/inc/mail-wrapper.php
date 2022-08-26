@@ -1,6 +1,5 @@
 #!/usr/local/hestia/php/bin/php
 <?php
-error_reporting(NULL);
 if (empty($argv[1])) {
     echo "ERROR: not enough arguments\n";
     echo "USAGE: mail-wrapper.php -s SUBJECT EMAIL [NOTIFY]\n";
@@ -26,8 +25,11 @@ if (!empty( $data['config']['LANGUAGE'])) {
     $_SESSION['language'] = 'en';
 }
 
-// Define vars
-$from = 'noreply@'.gethostname();
+//define vars 
+//make hostname detection a bit more feature proof
+$hostname = get_hostname();
+
+$from = 'noreply@'.$hostname;
 $from_name = _('Hestia Control Panel');
 $to = $argv[3]."\n";
 $subject = $argv[2]."\n";

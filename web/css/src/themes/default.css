@@ -3304,6 +3304,11 @@ a.button.cancel {
   color: #cc3366;
 }
 
+#v_password {
+    white-space: inherit;
+    word-break: break-word;
+}
+
 .additional-info {
   margin-top: 12px;
   width: 400px;
@@ -4263,6 +4268,13 @@ form#vstobjects.suspended {
   overflow-y: scroll;
   border-bottom: 1px solid rgba(255,255,255,0.65);
   box-shadow: 0px 2px 4px rgb(0 0 0 / 25%);
+}
+
+.ui-button.button-suspended{
+    color: #aaa !important;
+}
+.ui-button.button-suspended i{
+    color: #aaa !important;
 }
 
 .body-login .debug-panel-header, .body-login .debug-panel-contents,

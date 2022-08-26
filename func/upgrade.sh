@@ -14,6 +14,9 @@ source $HESTIA/func/syshealth.sh
 #######                Functions & Initialization             #######
 #####################################################################
 
+# Define version check function
+function version_ge(){ test "$(printf '%s\n' "$@" | sort -V | head -n 1)" != "$1" -o -n "$1" -a "$1" = "$2"; }
+
 add_upgrade_message (){ 
     if [ -f "$HESTIA_BACKUP/message.log" ]; then 
         echo -e $1 >> $HESTIA_BACKUP/message.log
@@ -377,6 +380,7 @@ upgrade_init_logging() {
 }
 
 upgrade_start_backup() {
+    echo "============================================================================="
     echo "[ * ] Backing up existing templates and configuration files..."
     if [ "$DEBUG_MODE" = "true" ]; then
         echo "      - Packages"
@@ -481,7 +485,7 @@ upgrade_start_backup() {
         if [ "$DEBUG_MODE" = "true" ]; then
             echo "      ---- Rainloop"
         fi
-        cp -fr /etc/roundcube/* $HESTIA_BACKUP/conf/roundcube
+        cp -fr /etc/rainloop/* $HESTIA_BACKUP/conf/rainloop
     fi
     if [ -d "/etc/phpmyadmin" ]; then
         if [ "$DEBUG_MODE" = "true" ]; then
@@ -545,12 +549,29 @@ upgrade_start_routine() {
     #####################################################################
 }
 
+upgrade_b2_tool(){
+    b2cli="/usr/local/bin/b2"
+    b2lnk="https://github.com/Backblaze/B2_Command_Line_Tool/releases/download/v$b2_v/b2-linux"
+    if [ -f "$b2cli" ]; then
+        b2_version=$($b2cli version | grep -o -E '[0-9].[0-9].[0-9]+' | head -1);
+        if version_ge "$b2_version" "$b2_v"; then
+            echo "[ * ] Backblaze CLI tool is up to date ($b2_v)..."
+        else
+            echo "[ * ] Upgrading Backblaze CLI tool to version $b2_v..."
+            rm $b2cli
+            wget -O $b2cli $b2lnk > /dev/null 2>&1
+            chmod +x $b2cli > /dev/null 2>&1
+            if [ ! -f "$b2cli" ]; then
+                echo "Error: Binary download failed, b2 doesnt work as expected."
+                exit 3
+            fi
+        fi
+    fi   
+}
+
 upgrade_phpmyadmin() {
     # Check if MariaDB/MySQL is installed on the server before attempting to install or upgrade phpMyAdmin
     if [ -n "$(echo $DB_SYSTEM | grep -w 'mysql')" ]; then
-        # Define version check function
-        function version_ge(){ test "$(printf '%s\n' "$@" | sort -V | head -n 1)" != "$1" -o -n "$1" -a "$1" = "$2"; }
-
         pma_release_file=$(ls /usr/share/phpmyadmin/RELEASE-DATE-* 2>/dev/null |tail -n 1)
         if version_ge "${pma_release_file##*-}" "$pma_v"; then
             echo "[ * ] phpMyAdmin is up to date (${pma_release_file##*-})..."
@@ -561,7 +582,7 @@ upgrade_phpmyadmin() {
             fi
         else
             # Display upgrade information
-            echo "[ * ] Upgrading phpMyAdmin to version v$pma_v..."
+            echo "[ * ] Upgrading phpMyAdmin to version $pma_v..."
             [ -d /usr/share/phpmyadmin ] || mkdir -p /usr/share/phpmyadmin
 
             # Download latest phpMyAdmin release
@@ -577,8 +598,7 @@ upgrade_phpmyadmin() {
             cp -rf phpMyAdmin-$pma_v-all-languages/* /usr/share/phpmyadmin
 
             # Set config and log directory
-            sed -i "s|define('CONFIG_DIR', ROOT_PATH);|define('CONFIG_DIR', '/etc/phpmyadmin/');|" /usr/share/phpmyadmin/libraries/vendor_config.php
-            sed -i "s|define('TEMP_DIR', ROOT_PATH . 'tmp/');|define('TEMP_DIR', '/var/lib/phpmyadmin/tmp/');|" /usr/share/phpmyadmin/libraries/vendor_config.php
+            sed -i "s|'configFile' => ROOT_PATH . 'config.inc.php',|'configFile' => '/etc/phpmyadmin/config.inc.php',|g" /usr/share/phpmyadmin/libraries/vendor_config.php
 
             # Create temporary folder and change permissions
             if [ ! -d /usr/share/phpmyadmin/tmp ]; then
@@ -609,7 +629,7 @@ upgrade_filemanager() {
             fm_version="1.0.0"
         fi
         if [ "$fm_version" != "$fm_v" ]; then 
-            echo "[ ! ] Updating File Manager..."
+            echo "[ ! ] Upgrading File Manager to version $fm_v..."
             # Reinstall the File Manager
             $HESTIA/bin/v-delete-sys-filemanager quiet yes
             $HESTIA/bin/v-add-sys-filemanager quiet
@@ -632,11 +652,12 @@ upgrade_filemanager() {
 upgrade_roundcube(){
     if [ -n "$(echo "$WEBMAIL_SYSTEM" | grep -w 'roundcube')" ]; then
         if [ -d "/usr/share/roundcube" ]; then
-            echo "[ * ] Roundcube: Unable to update. Updates are managed by apt.";
+            echo "[ ! ] Roundcube: Updates are currently managed using the apt package manager";
+            echo "      To upgrade to the latest version of Roundcube directly from upstream, from please run the command migrate_roundcube.sh located in: /usr/local/hestia/install/upgrade/manual/"
         else
             rc_version=$(cat /var/lib/roundcube/index.php | grep -o -E '[0-9].[0-9].[0-9]+' | head -1);
             if [ "$rc_version" != "$rc_v" ]; then
-                echo "[ ! ] Upgrading Roundcube to version v$rc_v..."
+                echo "[ ! ] Upgrading Roundcube to version $rc_v..."
                 $HESTIA/bin/v-add-sys-roundcube
             else
                 echo "[ * ] Roundcube is up to date ($rc_v)..."
@@ -649,7 +670,7 @@ upgrade_rainloop(){
     if [ -n "$(echo "$WEBMAIL_SYSTEM" | grep -w 'rainloop')" ]; then
         rl_version=$(cat /var/lib/rainloop/data/VERSION);
         if [ "$rl_version" != "$rl_v" ]; then
-            echo "[ ! ] Upgrading Rainloop to version v$rl_v..."
+            echo "[ ! ] Upgrading Rainloop to version $rl_v..."
             $HESTIA/bin/v-add-sys-rainloop
         else
             echo "[ * ] Rainloop is up to date ($rl_v)..."
@@ -664,7 +685,7 @@ upgrade_phpmailer(){
     fi
     phpm_version=$(cat $HESTIA/web/inc/vendor/phpmailer/phpmailer/VERSION);
     if [ "$phpm_version" != "$pm_v" ]; then
-    echo "[ ! ] Upgrading PHPmailer..."
+    echo "[ ! ] Upgrading PHPmailer to version $pm_v..."
         $HESTIA/bin/v-add-sys-phpmailer
     else
         echo "[ * ] PHPmailer is up to date ($pm_v)..."
@@ -741,13 +762,12 @@ upgrade_rebuild_users() {
 }
 
 upgrade_replace_default_config() {
-    if [ "$UPGRADE_REPLACE_KNOWN_KEYS" ]; then
-        syshealth_update_web_config_format
-        syshealth_update_mail_config_format
-        syshealth_update_dns_config_format
-        syshealth_update_db_config_format
-        syshealth_update_user_config_format
-    fi
+    syshealth_update_web_config_format
+    syshealth_update_mail_config_format
+    syshealth_update_mail_account_config_format
+    syshealth_update_dns_config_format
+    syshealth_update_db_config_format
+    syshealth_update_user_config_format
 }
 
 upgrade_restart_services() {

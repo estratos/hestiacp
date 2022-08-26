@@ -465,7 +465,7 @@ rebuild_dns_domain_conf() {
 
     # Get domain values
     get_domain_values 'dns'
-    domain_idn=$(idn -t --quiet -a "$domain")
+    domain_idn=$(idn2 --quiet "$domain")
 
     # Checking zone file
     if [ ! -e "$USER_DATA/dns/$domain.conf" ]; then
@@ -529,10 +529,11 @@ rebuild_dns_domain_conf() {
 
 # MAIL domain rebuild
 rebuild_mail_domain_conf() {
+    syshealth_repair_mail_config
+    
     get_domain_values 'mail'
-
     if [[ "$domain" = *[![:ascii:]]* ]]; then
-        domain_idn=$(idn -t --quiet -a $domain)
+        domain_idn=$(idn2 --quiet $domain)
     else
         domain_idn=$domain
     fi
@@ -565,16 +566,19 @@ rebuild_mail_domain_conf() {
         rm -f $HOMEDIR/$user/conf/mail/$domain/accounts
         rm -f $HOMEDIR/$user/conf/mail/$domain/aliases
         rm -f $HOMEDIR/$user/conf/mail/$domain/antispam
+        rm -f $HOMEDIR/$user/conf/mail/$domain/reject_spam
         rm -f $HOMEDIR/$user/conf/mail/$domain/antivirus
         rm -f $HOMEDIR/$user/conf/mail/$domain/protection
         rm -f $HOMEDIR/$user/conf/mail/$domain/passwd
         rm -f $HOMEDIR/$user/conf/mail/$domain/fwd_only
         rm -f $HOMEDIR/$user/conf/mail/$domain/ip
+        rm -fr $HOMEDIR/$user/conf/mail/$domain/limits
         touch $HOMEDIR/$user/conf/mail/$domain/accounts
         touch $HOMEDIR/$user/conf/mail/$domain/aliases
         touch $HOMEDIR/$user/conf/mail/$domain/passwd
         touch $HOMEDIR/$user/conf/mail/$domain/fwd_only
-
+        touch $HOMEDIR/$user/conf/mail/$domain/limits
+        
         # Setting outgoing ip address
         if [ -n "$local_ip" ]; then
             echo "$local_ip" > $HOMEDIR/$user/conf/mail/$domain/ip
@@ -588,6 +592,11 @@ rebuild_mail_domain_conf() {
         # Adding antivirus protection
         if [ "$ANTIVIRUS" = 'yes' ]; then
             touch $HOMEDIR/$user/conf/mail/$domain/antivirus
+        fi
+        
+        # Adding reject spam protection
+        if [ "$REJECT" = 'yes' ]; then
+            touch $HOMEDIR/$user/conf/mail/$domain/reject_spam
         fi
 
         # Adding dkim
@@ -658,6 +667,21 @@ rebuild_mail_domain_conf() {
             if [ "$FWD_ONLY" = 'yes' ]; then
                 echo "$account" >> $HOMEDIR/$user/conf/mail/$domain/fwd_only
             fi
+            user_rate_limit=$(get_object_value 'mail' 'DOMAIN' "$domain" '$RATE_LIMIT');
+            if [ -n "$RATE_LIMIT" ]; then
+                #user value
+                sed -i "/^$account@$domain_idn:/ d" $HOMEDIR/$user/conf/mail/$domain/limits
+                echo "$account@$domain_idn:$RATE_LIMIT" >> $HOMEDIR/$user/conf/mail/$domain/limits
+            elif [ -n "$user_rate_limit" ]; then
+                #revert to account value
+                sed -i "/^$account@$domain_idn:/ d" $HOMEDIR/$user/conf/mail/$domain/limits
+                echo "$account@$domain_idn:$user_rate_limit" >> $HOMEDIR/$user/conf/mail/$domain/limits
+            else
+                #revert to system value
+                system=$(cat /etc/exim4/limit.conf)
+                sed -i "/^$account@$domain_idn:/ d" $HOMEDIR/$user/conf/mail/$domain/limits
+                echo "$account@$domain_idn:$system" >> $HOMEDIR/$user/conf/mail/$domain/limits
+            fi
         fi
     done
 
@@ -719,7 +743,9 @@ rebuild_mysql_database() {
     mysql_query "CREATE DATABASE \`$DB\` CHARACTER SET $CHARSET" >/dev/null
     if [ "$mysql_fork" = "mysql" ]; then
         # mysql
-        if [ "$(echo $mysql_ver |cut -d '.' -f2)" -ge 7 ]; then
+        mysql_ver_sub=$(echo $mysql_ver |cut -d '.' -f1)
+        mysql_ver_sub_sub=$(echo $mysql_ver |cut -d '.' -f2)
+        if [ "$mysql_ver_sub" -ge 8 ] || { [ "$mysql_ver_sub" -eq 5 ] && [ "$mysql_ver_sub_sub" -ge 7 ]; } then
             # mysql >= 5.7
             mysql_query "CREATE USER IF NOT EXISTS \`$DBUSER\`" > /dev/null
             mysql_query "CREATE USER IF NOT EXISTS \`$DBUSER\`@localhost" > /dev/null
@@ -742,10 +768,13 @@ rebuild_mysql_database() {
             # mariadb = 10
             mysql_query "CREATE USER IF NOT EXISTS \`$DBUSER\` IDENTIFIED BY PASSWORD '$MD5'" > /dev/null
             mysql_query "CREATE USER IF NOT EXISTS \`$DBUSER\`@localhost IDENTIFIED BY PASSWORD '$MD5'" > /dev/null
-            query="UPDATE mysql.user SET Password='$MD5' WHERE User='$DBUSER'"
             if [ "$mysql_ver_sub_sub" -ge 4 ]; then
+                #mariadb >= 10.4
                 query="SET PASSWORD FOR '$DBUSER'@'%' = '$MD5';"
                 query2="SET PASSWORD FOR '$DBUSER'@'localhost' = '$MD5';"
+            else
+                #mariadb < 10.4
+                query="UPDATE mysql.user SET Password='$MD5' WHERE User='$DBUSER'"
             fi
         fi
     fi

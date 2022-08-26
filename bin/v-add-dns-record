@@ -17,10 +17,10 @@
 user=$1
 domain=$2
 domain_idn=$2
-record=$(idn -t --quiet -u "$3" )
+record=$(idn2 --quiet -d "$3" )
 record=$(echo "$record" | tr '[:upper:]' '[:lower:]')
 rtype=$(echo "$4"| tr '[:lower:]' '[:upper:]')
-dvalue=$(idn -t --quiet -u "$5" )
+dvalue=$5
 priority=$6
 id=$7
 restart=$8
@@ -55,8 +55,8 @@ if [[ $rtype =~ NS|CNAME|MX|PTR|SRV ]]; then
 fi
 
 if [[ $rtype =~ NS|CNAME|MX|PTR|SRV ]]; then
-    dvalue=$(idn -t --quiet -a "$dvalue" )
-    record=$(idn -t --quiet -a "$record" )
+    dvalue=$(idn2 --quiet  "$dvalue" )
+    record=$(idn2 --quiet  "$record" )
 fi
 
 # Cleanup quotes on dvalue
@@ -71,6 +71,10 @@ if [ "$rtype" != "CAA" ]; then
     if [ "$rtype" != 'SRV' ] && [[ "$dvalue" =~ [\;[:space:]] ]]; then
         dvalue='"'"$dvalue"'"'
     fi
+fi
+
+if [ "$record" = "@" ] && [ "$rtype" = "CNAME" ]; then
+    check_result $E_INVALID "CNAME on root is not allowed"
 fi
 
 # Additional argument formatting
@@ -96,6 +100,9 @@ is_object_new "dns/$domain" 'ID' "$id"
 is_dns_fqnd "$rtype" "$dvalue"
 is_dns_nameserver_valid "$domain" "$rtype" "$dvalue"
 is_format_valid 'ttl'
+if [ -n "$restart" ]; then
+    is_format_valid 'restart'
+fi
 
 # Perform verification if read-only mode is enabled
 check_hestia_demo_mode

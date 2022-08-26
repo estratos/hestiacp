@@ -1,6 +1,6 @@
 <?php
+use function Hestiacp\quoteshellarg\quoteshellarg;
 
-error_reporting(null);
 ob_start();
 $TAB = 'WEB';
 
@@ -52,7 +52,7 @@ if (!empty($_POST['ok'])) {
     $v_domain = strtolower($v_domain);
 
     // Define domain ip address
-    $v_ip = escapeshellarg($_POST['v_ip']);
+    $v_ip = quoteshellarg($_POST['v_ip']);
 
     // Using public IP instead of internal IP when creating DNS
     // Gets public IP from 'v-list-user-ips' command (that reads /hestia/data/ips/ip), precisely from 'NAT' field
@@ -63,11 +63,16 @@ if (!empty($_POST['ok'])) {
     unset($output);
     if (isset($ips[$v_clean_ip]) && isset($ips[$v_clean_ip]['NAT']) && trim($ips[$v_clean_ip]['NAT'])!='') {
         $v_public_ip = trim($ips[$v_clean_ip]['NAT']);
-        $v_public_ip = escapeshellarg($v_public_ip);
+        $v_public_ip = quoteshellarg($v_public_ip);
     }
 
     // Define domain aliases
-    $v_aliases = $_POST['v_aliases'];
+    if (empty($_POST['v_aliases'])) {
+        $v_aliases = '';
+    } else {
+        $v_aliases = $_POST['v_aliases'];
+    }
+
     $aliases = preg_replace("/\n/", ",", $v_aliases);
     $aliases = preg_replace("/\r/", ",", $aliases);
     $aliases = preg_replace("/\t/", ",", $aliases);
@@ -76,12 +81,14 @@ if (!empty($_POST['ok'])) {
     $aliases_arr = array_unique($aliases_arr);
     $aliases_arr = array_filter($aliases_arr);
     $aliases = implode(",", $aliases_arr);
-    $aliases = escapeshellarg($aliases);
-    if (empty($_POST['v_aliases'])) {
-        $aliases = 'none';
-    }
+    $aliases = quoteshellarg($aliases);
+
 
     // Define proxy extensions
+    if (empty($_POST['v_proxy_ext'])) {
+        # not set on nginx only
+        $_POST['v_proxy_ext'] = '';
+    }
     $v_proxy_ext = $_POST['v_proxy_ext'];
     $proxy_ext = preg_replace("/\n/", ",", $v_proxy_ext);
     $proxy_ext = preg_replace("/\r/", ",", $proxy_ext);
@@ -91,28 +98,51 @@ if (!empty($_POST['ok'])) {
     $proxy_ext_arr = array_unique($proxy_ext_arr);
     $proxy_ext_arr = array_filter($proxy_ext_arr);
     $proxy_ext = implode(",", $proxy_ext_arr);
-    $proxy_ext = escapeshellarg($proxy_ext);
+    $proxy_ext = quoteshellarg($proxy_ext);
 
     // Define other options
-    $v_elog = $_POST['v_elog'];
+    if (empty($_POST['v_ssl'])) {
+        $_POST['v_ssl'] = '';
+    }
     $v_ssl = $_POST['v_ssl'];
     $v_ssl_crt = $_POST['v_ssl_crt'];
     $v_ssl_key = $_POST['v_ssl_key'];
     $v_ssl_ca = $_POST['v_ssl_ca'];
-    $v_ssl_home = $data[$v_domain]['SSL_HOME'];
+    if (empty($_POST['v_letsencrypt'])) {
+        $_POST['v_letsencrypt'] = '';
+    }
     $v_letsencrypt = $_POST['v_letsencrypt'];
-    $v_stats = escapeshellarg($_POST['v_stats']);
-    $v_stats_user = $data[$v_domain]['STATS_USER'];
-    $v_stats_password = $data[$v_domain]['STATS_PASSWORD'];
+    if (empty($_POST['v_stats'])) {
+        $_POST['v_stats'] = '';
+    }
+    $v_stats = quoteshellarg($_POST['v_stats']);
+    $v_stats_user = $_POST['v_stats_user'];
+    $v_stats_password = $_POST['v_stats_user'];
     $v_custom_doc_domain = $_POST['v-custom-doc-domain'];
     $v_custom_doc_folder = $_POST['v-custom-doc-folder'];
-    $v_custom_doc_root_prepath = '/home/'.$user.'/web/';
+    $v_custom_doc_root_prepath = '/home/'.$user_plain.'/web/';
 
+    if (empty($_POST['v_ftp'])) {
+        $_POST['v_ftp'] = '';
+    }
     $v_ftp = $_POST['v_ftp'];
+    if (empty($_POST['v_ftp_user'])) {
+        $_POST['v_ftp_user'] = '';
+    }
     $v_ftp_user = $_POST['v_ftp_user'];
+    if (empty($_POST['v_ftp_password'])) {
+        $_POST['v_ftp_password'] = '';
+    }
     $v_ftp_password = $_POST['v_ftp_password'];
+    if (empty($_POST['v_ftp_email'])) {
+        $_POST['v_ftp_email'] = '';
+    }
     $v_ftp_email = $_POST['v_ftp_email'];
+
     if (!empty($v_domain)) {
+        if (empty($v_ftp_user_prepath)) {
+            $v_ftp_user_prepath = '/home/'. $user_plain . "/web";
+        }
         $v_ftp_user_prepath .= $v_domain;
     }
 
@@ -120,9 +150,9 @@ if (!empty($_POST['ok'])) {
     $user_config = json_decode(implode('', $output), true);
     unset($output);
 
-    $v_template = $user_config[$user]['TEMPLATE'];
-    $v_backend_template = $user_config[$user]['BACKEND_TEMPLATE'];
-    $v_proxy_template = $user_config[$user]['PROXY_TEMPLATE'];
+    $v_template = $user_config[$user_plain]['WEB_TEMPLATE'];
+    $v_backend_template = $user_config[$user_plain]['BACKEND_TEMPLATE'];
+    $v_proxy_template = $user_config[$user_plain]['PROXY_TEMPLATE'];
 
     // Set advanced option checkmark
     if (!empty($_POST['v_proxy'])) {
@@ -135,10 +165,11 @@ if (!empty($_POST['ok'])) {
     if ($_POST['v_proxy_ext'] != $v_proxy_ext) {
         $v_adv = 'yes';
     }
+
     if ((!empty($_POST['v_aliases'])) && ($_POST['v_aliases'] != 'www.'.$_POST['v_domain'])) {
         $v_adv = 'yes';
     }
-    if ((!empty($_POST['v_ssl'])) || (!empty($_POST['v_elog']))) {
+    if (!empty($_POST['v_ssl'])) {
         $v_adv = 'yes';
     }
     if ((!empty($_POST['v_ssl_crt'])) || (!empty($_POST['v_ssl_key']))) {
@@ -158,9 +189,11 @@ if (!empty($_POST['ok'])) {
     // Check advanced features
     if (empty($_POST['v_dns'])) {
         $v_dns = 'off';
+        $_POST['v_dns'] = '';
     }
     if (empty($_POST['v_mail'])) {
         $v_mail = 'off';
+        $_POST['v_mail'] = '';
     }
     if (empty($_POST['v_proxy'])) {
         $v_proxy = 'off';
@@ -168,7 +201,7 @@ if (!empty($_POST['ok'])) {
 
     // Add web domain
     if (empty($_SESSION['error_msg'])) {
-        exec(HESTIA_CMD."v-add-web-domain ".$user." ".escapeshellarg($v_domain)." ".$v_ip." 'yes' ".$aliases." ".$proxy_ext, $output, $return_var);
+        exec(HESTIA_CMD."v-add-web-domain ".$user." ".quoteshellarg($v_domain)." ".$v_ip." 'yes' ".$aliases." ".$proxy_ext, $output, $return_var);
         check_return_code($return_var, $output);
         unset($output);
         $domain_added = empty($_SESSION['error_msg']);
@@ -176,7 +209,7 @@ if (!empty($_POST['ok'])) {
 
     // Add DNS domain
     if (($_POST['v_dns'] == 'on') && (empty($_SESSION['error_msg']))) {
-        exec(HESTIA_CMD."v-add-dns-domain ".$user." ".escapeshellarg($v_domain)." ".$v_public_ip." '' '' '' '' '' '' '' '' 'no'", $output, $return_var);
+        exec(HESTIA_CMD."v-add-dns-domain ".$user." ".quoteshellarg($v_domain)." ".$v_public_ip." '' '' '' '' '' '' '' '' 'no'", $output, $return_var);
         check_return_code($return_var, $output);
         unset($output);
     }
@@ -185,7 +218,7 @@ if (!empty($_POST['ok'])) {
     if (($_POST['v_dns'] == 'on') && (empty($_SESSION['error_msg']))) {
         foreach ($aliases_arr as $alias) {
             if ($alias != "www.".$v_domain) {
-                $alias = escapeshellarg($alias);
+                $alias = quoteshellarg($alias);
                 exec(HESTIA_CMD."v-add-dns-on-web-alias ".$user." ".$alias." ".$v_ip." 'no'", $output, $return_var);
                 check_return_code($return_var, $output);
                 unset($output);
@@ -195,23 +228,14 @@ if (!empty($_POST['ok'])) {
 
     // Add mail domain
     if (($_POST['v_mail'] == 'on') && (empty($_SESSION['error_msg']))) {
-        exec(HESTIA_CMD."v-add-mail-domain ".$user." ".escapeshellarg($v_domain), $output, $return_var);
+        exec(HESTIA_CMD."v-add-mail-domain ".$user." ".quoteshellarg($v_domain), $output, $return_var);
         check_return_code($return_var, $output);
         unset($output);
-    }
-
-    // Delete proxy support
-    if ((!empty($_SESSION['PROXY_SYSTEM'])) && ($_POST['v_proxy'] == 'off')  && (empty($_SESSION['error_msg']))) {
-        $ext = escapeshellarg($ext);
-        exec(HESTIA_CMD."v-delete-web-domain-proxy ".$user." ".escapeshellarg($v_domain)." 'no'", $output, $return_var);
-        check_return_code($return_var, $output);
-        unset($output);
-        $restart_web = 'yes';
     }
 
     // Change template
     if (($v_template != $_POST['v_template']) && (empty($_SESSION['error_msg']))) {
-        exec(HESTIA_CMD."v-change-web-domain-tpl ".$user." ".escapeshellarg($v_domain)." ".escapeshellarg($_POST['v_template'])." 'no'", $output, $return_var);
+        exec(HESTIA_CMD."v-change-web-domain-tpl ".$user." ".quoteshellarg($v_domain)." ".quoteshellarg($_POST['v_template'])." 'no'", $output, $return_var);
         check_return_code($return_var, $output);
         unset($output);
         $restart_web = 'yes';
@@ -219,7 +243,7 @@ if (!empty($_POST['ok'])) {
     // Change backend template
     if ((!empty($_SESSION['WEB_BACKEND'])) && ($v_backend_template != $_POST['v_backend_template']) && (empty($_SESSION['error_msg']))) {
         $v_backend_template = $_POST['v_backend_template'];
-        exec(HESTIA_CMD."v-change-web-domain-backend-tpl ".$user." ".escapeshellarg($v_domain)." ".escapeshellarg($v_backend_template), $output, $return_var);
+        exec(HESTIA_CMD."v-change-web-domain-backend-tpl ".$user." ".quoteshellarg($v_domain)." ".quoteshellarg($v_backend_template), $output, $return_var);
         check_return_code($return_var, $output);
         unset($output);
     }
@@ -235,7 +259,7 @@ if (!empty($_POST['ok'])) {
             if (!empty($_POST['v_proxy_template'])) {
                 $v_proxy_template = $_POST['v_proxy_template'];
             }
-            exec(HESTIA_CMD."v-change-web-domain-proxy-tpl ".$user." ".escapeshellarg($v_domain)." ".escapeshellarg($v_proxy_template)." ".escapeshellarg($ext)." 'no'", $output, $return_var);
+            exec(HESTIA_CMD."v-change-web-domain-proxy-tpl ".$user." ".quoteshellarg($v_domain)." ".quoteshellarg($v_proxy_template)." ".quoteshellarg($ext)." 'no'", $output, $return_var);
             check_return_code($return_var, $output);
             $v_proxy_ext = str_replace(',', ', ', $ext);
             unset($output);
@@ -246,12 +270,12 @@ if (!empty($_POST['ok'])) {
 
     // Add Lets Encrypt support
     if ((!empty($_POST['v_letsencrypt'])) && (empty($_SESSION['error_msg']))) {
-        exec(HESTIA_CMD."v-schedule-letsencrypt-domain ".$user." ".escapeshellarg($v_domain), $output, $return_var);
+        exec(HESTIA_CMD."v-schedule-letsencrypt-domain ".$user." ".quoteshellarg($v_domain), $output, $return_var);
         check_return_code($return_var, $output);
         unset($output);
 
         if (!empty($_POST['v_ssl_forcessl']) && $_POST['v_ssl_forcessl'] = 'yes') {
-            exec(HESTIA_CMD."v-add-web-domain-ssl-preset ".$user." ".escapeshellarg($v_domain)." 'yes'", $output, $return_var);
+            exec(HESTIA_CMD."v-add-web-domain-ssl-preset ".$user." ".quoteshellarg($v_domain)." 'yes'", $output, $return_var);
             check_return_code($return_var, $output);
             unset($output);
         }
@@ -286,13 +310,13 @@ if (!empty($_POST['ok'])) {
                 fclose($fp);
             }
 
-            $v_ssl_home = escapeshellarg($_POST['v_ssl_home']);
-            exec(HESTIA_CMD."v-add-web-domain-ssl ".$user." ".escapeshellarg($v_domain)." ".$tmpdir." ".$v_ssl_home." 'no'", $output, $return_var);
+            $v_ssl_home = quoteshellarg($_POST['v_ssl_home']);
+            exec(HESTIA_CMD."v-add-web-domain-ssl ".$user." ".quoteshellarg($v_domain)." ".$tmpdir." ".$v_ssl_home." 'no'", $output, $return_var);
             check_return_code($return_var, $output);
             unset($output);
 
             if (!empty($_POST['v_ssl_forcessl']) && $_POST['v_ssl_forcessl'] = 'yes') {
-                exec(HESTIA_CMD."v-add-web-domain-ssl-force ".$user." ".escapeshellarg($v_domain), $output, $return_var);
+                exec(HESTIA_CMD."v-add-web-domain-ssl-force ".$user." ".quoteshellarg($v_domain), $output, $return_var);
                 check_return_code($return_var, $output);
                 unset($output);
             }
@@ -313,37 +337,37 @@ if (!empty($_POST['ok'])) {
 
     // Add web stats
     if ((!empty($_POST['v_stats'])) && ($_POST['v_stats'] != 'none') && (empty($_SESSION['error_msg']))) {
-        $v_stats = escapeshellarg($_POST['v_stats']);
-        exec(HESTIA_CMD."v-add-web-domain-stats ".$user." ".escapeshellarg($v_domain)." ".$v_stats, $output, $return_var);
+        $v_stats = quoteshellarg($_POST['v_stats']);
+        exec(HESTIA_CMD."v-add-web-domain-stats ".$user." ".quoteshellarg($v_domain)." ".$v_stats, $output, $return_var);
         check_return_code($return_var, $output);
         unset($output);
     }
 
     // Add web stats password
     if ((!empty($_POST['v_stats_user'])) && (empty($_SESSION['error_msg']))) {
-        $v_stats_user = escapeshellarg($_POST['v_stats_user']);
+        $v_stats_user = quoteshellarg($_POST['v_stats_user']);
         $v_stats_password = tempnam("/tmp", "vst");
         $fp = fopen($v_stats_password, "w");
         fwrite($fp, $_POST['v_stats_password']."\n");
         fclose($fp);
-        exec(HESTIA_CMD."v-add-web-domain-stats-user ".$user." ".escapeshellarg($v_domain)." ".$v_stats_user." ".$v_stats_password, $output, $return_var);
+        exec(HESTIA_CMD."v-add-web-domain-stats-user ".$user." ".quoteshellarg($v_domain)." ".$v_stats_user." ".$v_stats_password, $output, $return_var);
         check_return_code($return_var, $output);
         unset($output);
         unlink($v_stats_password);
-        $v_stats_password = escapeshellarg($_POST['v_stats_password']);
+        $v_stats_password = quoteshellarg($_POST['v_stats_password']);
     }
 
     if (!empty($_POST['v-custom-doc-domain']) && !empty($_POST['v_custom_doc_root_check']) && $v_custom_doc_root_prepath.$v_custom_doc_domain.'/public_html'.$v_custom_doc_folder != $v_custom_doc_root) {
         if ($_POST['v-custom-doc-domain'] == $v_domain && empty($_POST['v-custom-doc-folder'])) {
         } else {
-            $v_custom_doc_domain = escapeshellarg($_POST['v-custom-doc-domain']);
+            $v_custom_doc_domain = quoteshellarg($_POST['v-custom-doc-domain']);
             if (substr($_POST['v-custom-doc-folder'], -1) == '/') {
-                $v_custom_doc_folder = escapeshellarg(substr($_POST['v-custom-doc-folder'], 0, -1));
+                $v_custom_doc_folder = quoteshellarg(substr($_POST['v-custom-doc-folder'], 0, -1));
             } else {
-                $v_custom_doc_folder = escapeshellarg($_POST['v-custom-doc-folder']);
+                $v_custom_doc_folder = quoteshellarg($_POST['v-custom-doc-folder']);
             }
-            $v_custom_doc_folder = escapeshellarg($_POST['v-custom-doc-folder']);
-            $v_domain = escapeshellarg(trim($_POST['v_domain']));
+            $v_custom_doc_folder = quoteshellarg($_POST['v-custom-doc-folder']);
+            $v_domain = quoteshellarg(trim($_POST['v_domain']));
 
             exec(HESTIA_CMD."v-change-web-domain-docroot ".$user." ".$v_domain." ".$v_custom_doc_domain." ".$v_custom_doc_folder." yes", $output, $return_var);
             check_return_code($return_var, $output);
@@ -411,22 +435,22 @@ if (!empty($_POST['ok'])) {
                     if (!empty($v_ftp_user_data['v_ftp_user'])) {
                         $pw_len = strlen($v_ftp_user_data['v_ftp_password']);
                         if ($pw_len < 6) {
-                            $_SESSION['error_msg'] = _('Password is too short.', $error_msg);
+                            $_SESSION['error_msg'] =  sprintf(_('Password is too short.'), $error_msg);
                         }
                     }
                 }
 
-                $v_ftp_user_data['v_ftp_user'] = preg_replace("/^".$user."_/i", "", $v_ftp_user_data['v_ftp_user']);
+                $v_ftp_user_data['v_ftp_user'] = preg_replace("/^".$user_plain."_/i", "", $v_ftp_user_data['v_ftp_user']);
                 $v_ftp_username      = $v_ftp_user_data['v_ftp_user'];
                 $v_ftp_username_full = $user . '_' . $v_ftp_user_data['v_ftp_user'];
-                $v_ftp_user = escapeshellarg($v_ftp_user_data['v_ftp_user']);
+                $v_ftp_user = quoteshellarg($v_ftp_user_data['v_ftp_user']);
                 if ($domain_added) {
-                    $v_ftp_path = escapeshellarg(trim($v_ftp_user_data['v_ftp_path']));
+                    $v_ftp_path = quoteshellarg(trim($v_ftp_user_data['v_ftp_path']));
                     $v_ftp_password = tempnam("/tmp", "vst");
                     $fp = fopen($v_ftp_password, "w");
                     fwrite($fp, $v_ftp_user_data['v_ftp_password']."\n");
                     fclose($fp);
-                    exec(HESTIA_CMD."v-add-web-domain-ftp ".$user." ".escapeshellarg($v_domain)." ".$v_ftp_user." ".$v_ftp_password . " " . $v_ftp_path, $output, $return_var);
+                    exec(HESTIA_CMD."v-add-web-domain-ftp ".$user." ".quoteshellarg($v_domain)." ".$v_ftp_user." ".$v_ftp_password . " " . $v_ftp_path, $output, $return_var);
                     check_return_code($return_var, $output);
                     unset($output);
                     unlink($v_ftp_password);
@@ -435,7 +459,7 @@ if (!empty($_POST['ok'])) {
                         $subject = _("FTP login credentials");
                         $from = "noreply@".$v_domain;
                         $from_name = _('Hestia Control Panel');
-                        $mailtext = sprintf(_('FTP_ACCOUNT_READY'), $v_domain, $user, $v_ftp_user_data['v_ftp_user'], $v_ftp_user_data['v_ftp_password']);
+                        $mailtext = sprintf(_('FTP_ACCOUNT_READY'), $v_domain, $user_plain, $v_ftp_user_data['v_ftp_user'], $v_ftp_user_data['v_ftp_password']);
                         send_email($to, $subject, $mailtext, $from, $from_name);
                         unset($v_ftp_email);
                     }
@@ -486,17 +510,33 @@ if (!empty($_POST['ok'])) {
         unset($v_ftp);
     }
 }
-
 // Define user variables
-$v_ftp_user_prepath = $panel[$user]['HOME'] . "/web";
-$v_ftp_email = $panel[$user]['CONTACT'];
-$v_custom_doc_root_prepath = '/home/'.$user.'/web/';
+$v_aliases = '';
+$v_stats_user = '';
+$v_stats_password = '';
+$v_domain = '';
+$v_custom_doc_domain = '';
+$v_custom_doc_folder = '';
+$v_ssl = '';
+$v_ssl_crt = '';
+$v_ssl_key = '';
+$v_ssl_ca = '';
+$v_ftp_users = array();
+$v_letsencrypt = '';
+$v_ftp_pre_path_new_user = '';
 
-if ($_POST['v_ssl_forcessl'] != 'no') {
-    $v_ssl_forcessl = 'yes';
-} else {
+$v_ftp_user_prepath = '/home/'. $user_plain . "/web";
+$v_ftp_email = '';
+$v_custom_doc_root_prepath = '/home/'.$user_plain.'/web/';
+
+if (empty($_POST['v_ssl_forcessl'])) {
     $v_ssl_forcessl = 'no';
+} elseif ($_POST['v_ssl_forcessl'] == 'no') {
+    $v_ssl_forcessl = 'no';
+} else {
+    $v_ssl_forcessl = 'yes';
 }
+
 // List user package
 exec(HESTIA_CMD."v-list-user ".$user." json", $output, $return_var);
 $user_config = json_decode(implode('', $output), true);
@@ -505,14 +545,13 @@ unset($output);
 exec(HESTIA_CMD."v-list-web-templates json", $output, $return_var);
 $templates = json_decode(implode('', $output), true);
 unset($output);
-$v_template = (!empty($_POST['v_template'])) ? $_POST['v_template'] : $user_config[$user]['WEB_TEMPLATE'];
-
+$v_template = (!empty($_POST['v_template'])) ? $_POST['v_template'] : $user_config[$user_plain]['WEB_TEMPLATE'];
 // List backend templates
 if (!empty($_SESSION['WEB_BACKEND'])) {
     exec(HESTIA_CMD."v-list-web-templates-backend json", $output, $return_var);
     $backend_templates = json_decode(implode('', $output), true);
     unset($output);
-    $v_backend_template = (!empty($_POST['v_backend_template'])) ? $_POST['v_backend_template'] : $user_config[$user]['BACKEND_TEMPLATE'];
+    $v_backend_template = (!empty($_POST['v_backend_template'])) ? $_POST['v_backend_template'] : $user_config[$user_plain]['BACKEND_TEMPLATE'];
 }
 
 // List proxy templates
@@ -520,7 +559,7 @@ if (!empty($_SESSION['PROXY_SYSTEM'])) {
     exec(HESTIA_CMD."v-list-web-templates-proxy json", $output, $return_var);
     $proxy_templates = json_decode(implode('', $output), true);
     unset($output);
-    $v_proxy_template = (!empty($_POST['v_proxy_template'])) ? $_POST['v_proxy_template'] : $user_config[$user]['PROXY_TEMPLATE'];
+    $v_proxy_template = (!empty($_POST['v_proxy_template'])) ? $_POST['v_proxy_template'] : $user_config[$user_plain]['PROXY_TEMPLATE'];
 }
 
 // List IP addresses
@@ -534,10 +573,14 @@ $stats = json_decode(implode('', $output), true);
 unset($output);
 
 // Get all user domains
-exec(HESTIA_CMD."v-list-web-domains ".escapeshellarg($user)." json", $output, $return_var);
+exec(HESTIA_CMD."v-list-web-domains ".$user." json", $output, $return_var);
 $user_domains = json_decode(implode('', $output), true);
 $user_domains = array_keys($user_domains);
 unset($output);
+
+if (empty($_GET['accept'])) {
+    $_GET['accept'] = false;
+}
 
 // Render page
 render_page($user, $TAB, 'add_web');
